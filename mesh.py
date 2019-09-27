@@ -18,7 +18,6 @@ class Mesh:
         self.n_triangles = len(self.triangulation['triangles'])
         self.n_vertices = len(self.triangulation['vertices'])
         self.boundary_vertices = np.where(self.triangulation['vertex_markers'] == [1])[0]
-        self.boundary_info = {}
 
     def get_interp(self, vertex):
         """returns t in interpolation along boundary"""
@@ -33,10 +32,16 @@ class Mesh:
         x, y = np.transpose(self.vertices())
         triangles = self.triangles()
         if axis:
-            c = axis.tripcolor(x, y, triangles, soln)
+            c = axis.tripcolor(x, y, triangles, soln, shading='gouraud')
         else:
-            c = plt.tripcolor(x, y, triangles, soln)
-        # plt.colorbar(c)
+            c = plt.tripcolor(x, y, triangles, soln, shading='gouraud')
+        axis.set_yticklabels([])
+        axis.set_xticklabels([])
+        axis.set_xticks([])
+        axis.set_yticks([])
+        axis.set(adjustable='box', aspect='equal')
+        axis.axis('off')
+        plt.colorbar(c, ax=axis)
 
     def calculate_area(self, triangle):
         """Returns area of triangle"""
@@ -50,6 +55,13 @@ class Mesh:
     def get_vertices_from_triangle(self, triangle):
         """Getter for vertices of triangle"""
         return self.get_pos(triangle[0]), self.get_pos(triangle[1]), self.get_pos(triangle[2])
+
+    def calculate_mass(self, triangle):
+        """Calculates local mass matrix"""
+        return 1/12.0 * self.calculate_area(triangle) * np.array(
+            [[2, 1, 1],
+             [1, 2, 1],
+             [1, 1, 2]])
 
     def calculate_stiffness(self, triangle):
         """Calculate local stiff matrix for triangle"""
@@ -75,13 +87,20 @@ class Mesh:
         """Getter for vertex list"""
         return self.triangulation['vertices']
 
-    def assemble_stiffness(self):
-        """Assemble global stiffness matrix"""
-        stiffness = np.zeros((self.n_vertices, self.n_vertices))
+    def assemble_matrix(self, generate_local_matrix_fn):
+        matrix = np.zeros((self.n_vertices, self.n_vertices))
         for triangle in self.triangles():
-            local_stiffness = self.calculate_stiffness(triangle)
+            local_matrix = generate_local_matrix_fn(triangle)
             for local_i, i in enumerate(triangle):
                 for local_j, j in enumerate(triangle):
-                    stiffness[i, j] += local_stiffness[local_i, local_j]
+                    matrix[i, j] += local_matrix[local_i, local_j]
 
-        return stiffness
+        return matrix
+
+    def assemble_mass(self):
+        """Assemble global mass matrix"""
+        return self.assemble_matrix(self.calculate_mass)
+
+    def assemble_stiffness(self):
+        """Assemble global stiffness matrix"""
+        return self.assemble_matrix(self.calculate_stiffness)
