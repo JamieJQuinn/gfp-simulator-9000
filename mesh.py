@@ -87,7 +87,25 @@ class Mesh:
         """Getter for vertex list"""
         return self.triangulation['vertices']
 
+    def calculate_boundary_values(self, boundary_fn):
+        """Returns vector of boundary_fn acted on all boundary points"""
+        return list(map(lambda x: boundary_fn(self.get_pos(x)), self.boundary_vertices))
+        # boundary_values = np.zeros(len(self.boundary_vertices))
+        # for i, boundary_index in enumerate(self.boundary_vertices):
+            # boundary_values[i] = boundary_fn(self.get_pos(boundary_index))
+        # return boundary_values
+
+    def assemble_body_force(self, force_fn):
+        """Assembles body force vector"""
+        force_vector = np.zeros(self.n_vertices)
+        for triangle in self.triangles():
+            area = self.calculate_area(triangle)
+            for index in triangle:
+                force_vector[index] += 1/6.0 * area * force_fn(self.get_pos(index))
+        return force_vector
+
     def assemble_matrix(self, generate_local_matrix_fn):
+        """Generic global matrix assembly for both mass and stiffness"""
         matrix = np.zeros((self.n_vertices, self.n_vertices))
         for triangle in self.triangles():
             local_matrix = generate_local_matrix_fn(triangle)
