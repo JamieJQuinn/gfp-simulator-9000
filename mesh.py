@@ -58,7 +58,7 @@ class Mesh:
 
     def calculate_mass(self, triangle):
         """Calculates local mass matrix"""
-        return 1/12.0 * self.calculate_area(triangle) * np.array(
+        return 1/6.0 * self.calculate_area(triangle) * np.array(
             [[2, 1, 1],
              [1, 2, 1],
              [1, 1, 2]])
@@ -76,7 +76,7 @@ class Mesh:
         grad = G[1:, :]
 
         tri_area = self.calculate_area_from_points(p1, p2, p3)
-        stiffness = 0.5 * tri_area * np.transpose(grad).dot(grad)
+        stiffness = tri_area * np.transpose(grad).dot(grad)
         return stiffness
 
     def triangles(self):
@@ -114,13 +114,31 @@ class Mesh:
         edges = list(map(self.get_edge_from_triangle, edge_triangles))
         return edges
 
+    def calculate_edge_length(self, edge):
+        """Returns length of edge"""
+        p1, p2 = self.vertices()[edge]
+        return np.sqrt((p1[0] - p2[0])**2 + (p1[1] - p2[1])**2)
+
+    def calculate_von_neumann_boundary(self, edge, boundary_values):
+        """Returns integral over edge of boundary function"""
+        midpoint_value = (boundary_values[edge[0]] + boundary_values[edge[1]])/2.0
+        return 1/2.0 * self.calculate_edge_length(edge) * midpoint_value
+
+    def assemble_von_neumann_boundary(self, boundary_values):
+        """Assembles von neumann vector"""
+        boundary_vector = np.zeros(self.n_vertices)
+        edges = self.get_edges()
+        for edge in edges:
+            boundary_vector[edge] += self.calculate_von_neumann_boundary(edge, boundary_values)
+        return boundary_vector
+
     def assemble_body_force(self, force_fn):
         """Assembles body force vector"""
         force_vector = np.zeros(self.n_vertices)
         for triangle in self.triangles():
             area = self.calculate_area(triangle)
             for index in triangle:
-                force_vector[index] += 1/6.0 * area * force_fn(self.get_pos(index))
+                force_vector[index] += 1/3.0 * area * force_fn(self.get_pos(index))
         return force_vector
 
     def assemble_matrix(self, generate_local_matrix_fn):
