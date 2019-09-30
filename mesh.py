@@ -95,6 +95,25 @@ class Mesh:
             # boundary_values[i] = boundary_fn(self.get_pos(boundary_index))
         # return boundary_values
 
+    def contains_edge(self, triangle):
+        """Does a triangle contain two edge points?"""
+        edge_markers = self.get_markers(triangle)
+        return len(edge_markers[edge_markers == 1]) == 2
+
+    def get_markers(self, triangle):
+        """Return vertex markers for given triangle"""
+        return np.transpose(self.triangulation['vertex_markers'][triangle])[0]
+
+    def get_edge_from_triangle(self, triangle):
+        """Returns a list of edge points from a triangle"""
+        return triangle[self.get_markers(triangle) == 1]
+
+    def get_edges(self):
+        """Returns a list of edges"""
+        edge_triangles = filter(self.contains_edge, self.triangles())
+        edges = list(map(self.get_edge_from_triangle, edge_triangles))
+        return edges
+
     def assemble_body_force(self, force_fn):
         """Assembles body force vector"""
         force_vector = np.zeros(self.n_vertices)
