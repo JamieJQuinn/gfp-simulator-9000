@@ -44,7 +44,13 @@ class Mesh:
 
     def calculate_area_from_points(self, p1, p2, p3):
         """Returns area of triangle from points"""
-        return 0.5*((p2[0]-p1[0])*(p3[1]-p1[1]) - (p2[1]-p1[1])*(p3[0]-p1[0]))
+        return 0.5*abs((p2[0]-p1[0])*(p3[1]-p1[1]) - (p2[1]-p1[1])*(p3[0]-p1[0]))
+
+    def integrate(self, fn):
+        sum = 0.0
+        for tri in self.triangles():
+            sum = sum + 1.0/3.0 * self.calculate_area(tri) * np.sum(fn[tri])
+        return sum
 
     ### Getters
 
@@ -98,12 +104,20 @@ class Mesh:
         p1, p2 = self.vertices()[edge]
         return np.sqrt((p1[0] - p2[0])**2 + (p1[1] - p2[1])**2)
 
+    def integrate_around_edge(self, fn):
+        # Note: fn is in full element representation
+        edges = self.get_edges()
+        integration_sum = 0.0
+        for edge in edges:
+            integration_sum += 0.5 * self.calculate_edge_length(edge) * np.sum(fn[edge])
+        return integration_sum
+
     ### von Neumann assembly
 
     def calculate_von_neumann_boundary(self, edge, boundary_values):
         """Returns integral over edge of boundary function"""
         midpoint_value = (boundary_values[edge[0]] + boundary_values[edge[1]])/2.0
-        return 1/2.0 * self.calculate_edge_length(edge) * midpoint_value
+        return 1.0/2.0 * self.calculate_edge_length(edge) * midpoint_value
 
     def assemble_von_neumann_boundary(self, boundary_values):
         """Assembles von neumann vector"""
@@ -120,8 +134,10 @@ class Mesh:
         force_vector = np.zeros(self.n_vertices)
         for triangle in self.triangles():
             area = self.calculate_area(triangle)
+            centre_force = 0.0
             for index in triangle:
-                force_vector[index] += 1/3.0 * area * force_fn(self.get_pos(index))
+                centre_force += 1/3.0 * force_fn(self.get_pos(index))
+            force_vector[triangle] += 1/3.0 * area * centre_force
         return force_vector
 
     ### Mass and stiffness assembly
@@ -139,7 +155,7 @@ class Mesh:
 
     def calculate_mass(self, triangle):
         """Calculates local mass matrix"""
-        return 1/6.0 * self.calculate_area(triangle) * np.array(
+        return 1/12.0 * self.calculate_area(triangle) * np.array(
             [[2, 1, 1],
              [1, 2, 1],
              [1, 1, 2]])
@@ -147,19 +163,28 @@ class Mesh:
     def calculate_stiffness(self, triangle):
         """Calculate local stiff matrix for triangle"""
         p1, p2, p3 = self.get_vertices_from_triangle(triangle)
-        # Inverse of A' gives a + bx + cy representation of point
-        A = [[1    , 1    , 1    ],
-             [p1[0], p2[0], p3[0]],
-             [p1[1], p2[1], p3[1]]]
-        G = np.linalg.inv(np.transpose(A))
+        B_K_inv_trans = 1.0/(2.0*self.calculate_area(triangle)) * \
+                np.array([[  p3[1] - p1[1], -(p2[1] - p1[1])],
+                          [-(p3[0] - p1[0]),  p2[0] - p1[0]]])
 
-        # Take only b anc c
-        grad = G[1:, :]
+        K11 = 1.0/2.0*np.array(\
+                               [[1, -1, 0],
+                                [-1, 1, 0],
+                                [0, 0, 0 ]])
+        K22 = 1.0/2.0*np.array(\
+                               [[1, 0, -1],
+                                [0, 0, 0],
+                                [-1, 0, 1 ]])
+        K12 = 1.0/2.0*np.array(\
+                               [[1, 0, -1],
+                                [-1, 0, 1],
+                                [0, 0, 0 ]])
 
-        tri_area = self.calculate_area_from_points(p1, p2, p3)
-        stiffness = tri_area * np.transpose(grad).dot(grad)
+        C_K = np.transpose(B_K_inv_trans).dot(B_K_inv_trans)
+
+        detB = 2.0*self.calculate_area(triangle)
+        stiffness = detB * (C_K[0,0]*K11 + C_K[1,1]*K22 + C_K[0,1]*(K12 + np.transpose(K12)))
         return stiffness
-
 
     def assemble_mass(self):
         """Assemble global mass matrix"""
