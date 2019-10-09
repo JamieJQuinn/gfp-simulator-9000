@@ -33,7 +33,8 @@ class Mesh:
         axis.set_yticks([])
         axis.set(adjustable='box', aspect='equal')
         axis.axis('off')
-        plt.colorbar(c, ax=axis)
+        # plt.colorbar(c, ax=axis)
+        return c
 
     ### Area calculation
 
