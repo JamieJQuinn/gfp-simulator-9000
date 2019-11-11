@@ -1,5 +1,6 @@
 """Provides mesh class"""
 
+import math
 import numpy as np
 import triangle as tr
 import matplotlib.pyplot as plt
@@ -7,6 +8,7 @@ import matplotlib.pyplot as plt
 class Mesh:
     """Triangulated mesh"""
     def __init__(self, n_points, min_size=0.05, min_angle=20):
+        self.min_size = min_size
         self.n_boundary_points = n_points
         theta = np.linspace(0, 2*np.pi, n_points, endpoint=False)
         pts = np.stack([np.cos(theta), np.sin(theta)], axis=1)
@@ -19,21 +21,28 @@ class Mesh:
         self.n_vertices = len(self.triangulation['vertices'])
         self.boundary_vertices = np.where(self.triangulation['vertex_markers'] == [1])[0]
 
-    def plot(self, soln, axis=None):
+    def plot(self, interior_soln, boundary_soln, axis=None, show_colourbar=False, vmax=None, vmin=None):
         """plot soln on mesh"""
+        # derive boundary thickness from likely size of boundary triangle
+        boundary_thickness = self.n_boundary_points*self.min_size/math.pi
+
+        # form whole solution from internal GFP + boundary GFP
+        soln = interior_soln + boundary_soln/boundary_thickness
+
         x, y = np.transpose(self.vertices())
         triangles = self.triangles()
         if axis:
-            c = axis.tripcolor(x, y, triangles, soln, shading='gouraud')
+            c = axis.tripcolor(x, y, triangles, soln, shading='gouraud', vmax=vmax, vmin=vmin)
         else:
-            c = plt.tripcolor(x, y, triangles, soln, shading='gouraud')
+            c = plt.tripcolor(x, y, triangles, soln, shading='gouraud', vmax=vmax, vmin=vmin)
         axis.set_yticklabels([])
         axis.set_xticklabels([])
         axis.set_xticks([])
         axis.set_yticks([])
         axis.set(adjustable='box', aspect='equal')
         axis.axis('off')
-        # plt.colorbar(c, ax=axis)
+        if show_colourbar:
+            plt.colorbar(c, ax=axis)
         return c
 
     ### Area calculation
@@ -73,6 +82,10 @@ class Mesh:
         """Getter for vertex list"""
         return self.triangulation['vertices']
 
+    def edges(self):
+        """Getter for edge list"""
+        return self.get_edges()
+
     ### Dirichlet boundary calculation
 
     def calculate_boundary_values(self, boundary_fn):
@@ -107,9 +120,8 @@ class Mesh:
 
     def integrate_around_edge(self, fn):
         # Note: fn is in full element representation
-        edges = self.get_edges()
         integration_sum = 0.0
-        for edge in edges:
+        for edge in self.edges():
             integration_sum += 0.5 * self.calculate_edge_length(edge) * np.sum(fn[edge])
         return integration_sum
 
