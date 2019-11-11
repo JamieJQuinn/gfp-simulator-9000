@@ -10,6 +10,8 @@ triangle = "*"
 jupyter = "*"
 numpy = "*"
 matplotlib = "*"
+scipy = "*"
+nose = "*"
 
 [requires]
 python_version = "3.7"
