@@ -12,6 +12,7 @@ numpy = "*"
 matplotlib = "*"
 scipy = "*"
 nose = "*"
+meshio = "*"
 
 [requires]
 python_version = "3.7"
