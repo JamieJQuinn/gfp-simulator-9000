@@ -4,7 +4,7 @@ import math
 
 # Parameters
 cell_radius = 5e-6 # metres
-membrane_thickness_real = 0.1e-6 # metres
+membrane_thickness_real = 0.5e-6 # From approximate wavelength of light (metres)
 D = 30e-12 # Diffusion constant of GFP (m^2 per s)
 kp_real = 5.6e5 # association constant (M^-1 s^-1)
 km_real = 0.069 # dissociation constant (s^-1)
