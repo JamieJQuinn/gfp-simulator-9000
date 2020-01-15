@@ -12,6 +12,12 @@ class Boundary:
         self.km = km
         self.kp = kp
 
+    def reset(self):
+        self.active_rac = np.zeros(self.n_elements)
+        self.bound_gfp = np.zeros(self.n_elements)
+        self.prev_ddt = np.zeros(self.n_elements)
+        self.ddt = np.zeros(self.n_elements)
+
     def set_active_rac(self, rac):
         self.active_rac[:] = rac
 

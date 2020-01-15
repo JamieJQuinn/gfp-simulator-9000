@@ -4,6 +4,7 @@ import math
 import numpy as np
 import triangle as tr
 import matplotlib.pyplot as plt
+import matplotlib
 
 class Mesh2D:
     """Triangulated mesh"""
@@ -21,7 +22,7 @@ class Mesh2D:
         self.n_vertices = len(self.triangulation['vertices'])
         self.boundary_vertices = np.where(self.triangulation['vertex_markers'] == [1])[0]
 
-    def plot(self, soln, axis=None, show_colourbar=False, vmax=None, vmin=None):
+    def plot(self, soln, axis=None, vmax=None, vmin=None):
         """plot soln on mesh"""
         x, y = np.transpose(self.vertices())
         triangles = self.triangles()
@@ -35,20 +36,21 @@ class Mesh2D:
         axis.set_yticks([])
         axis.set(adjustable='box', aspect='equal')
         axis.axis('off')
-        if show_colourbar:
-            plt.colorbar(c, ax=axis, orientation='horizontal')
-        return c
 
-    def plot_triple(self, interior_soln, boundary_soln, axes):
+        cax, _ = matplotlib.colorbar.make_axes(axis, orientation='horizontal')
+        plt.colorbar(c, cax=cax, orientation='horizontal')
+        return c, cax
+
+    def plot_triple(self, interior_soln, boundary_soln, axes, vmax=None, vmin=None):
         """ Plot interior, boundary and combined on separate plots"""
         if len(axes) != 3:
             return -1
 
-        self.plot(interior_soln, axes[0], show_colourbar=True, vmin=0.0)
-        self.plot(boundary_soln, axes[1], show_colourbar=True, vmin=0.0)
+        interior_plot, interior_cax = self.plot(interior_soln, axes[0], vmin=vmin, vmax=vmax)
+        boundary_plot, boundary_cax = self.plot(boundary_soln, axes[1], vmin=vmin, vmax=vmax)
         combined_soln = interior_soln + boundary_soln
-        self.plot(combined_soln, axes[2], show_colourbar=True, vmin=0.0)
-
+        combined_plot, combined_cax = self.plot(combined_soln, axes[2], vmin=vmin, vmax=vmax)
+        return interior_plot, boundary_plot, combined_plot, interior_cax, boundary_cax, combined_cax
 
     ### Area calculation
 
