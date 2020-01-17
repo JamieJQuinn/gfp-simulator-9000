@@ -10,9 +10,25 @@ import pymesh
 
 class Mesh3D:
     """Triangulated mesh"""
-    def __init__(self, input_mesh):
+    def __init__(self, input_mesh, cell_size):
         self.input_mesh = input_mesh
-        self.tetmesh = None
+        # Regularise input mesh
+        regularise_mesh(self.input_mesh, cell_size)
+
+        # Tetrahedralise input mesh
+        self.tetmesh = tetrahedralise(self.input_mesh, cell_size)
+
+        self.assembler = pymesh.Assembler(self.tetmesh)
+
+        # save a list of boundary vertices
+        self.boundary_mesh = compute_boundary_mesh(self.tetmesh)
+        source_faces = self.boundary_mesh.get_attribute("face_sources").astype(int)
+        self.boundary_vertices = np.unique(np.array(self.tetmesh.faces[source_faces]).flatten())
+
+        self.n_vertices = self.tetmesh.num_vertices
+        self.attributes_to_save = []
+
+        self._faces = self.tetmesh.faces[source_faces]
 
         # Calculate structures on the reference tetrahedron
         self.gradN = np.array([[-1,-1,-1], [ 1, 0, 0], [ 0, 1, 0], [ 0, 0, 1]])
@@ -27,28 +43,17 @@ class Mesh3D:
 
     ### Mesh tools
 
-    def resize_input_mesh(self, tol):
-        """Takes mesh & resizes triangles to tol size"""
-        self.input_mesh, __ = pymesh.remove_degenerated_triangles(self.input_mesh, 100);
-        self.input_mesh, _info = pymesh.split_long_edges(self.input_mesh, tol)
-        self.input_mesh, __ = pymesh.collapse_short_edges(self.input_mesh, 1e-6);
-        self.input_mesh, _info = pymesh.collapse_short_edges(self.input_mesh, tol, preserve_feature=True)
-
-    def tetrahedralise(self, CELL_SIZE):
-        """Tetrahedralise the mesh"""
-        self.tetmesh = pymesh.tetrahedralize(self.input_mesh, CELL_SIZE)
-
-    def write_input_mesh(self, filename, attributes=[]):
+    def write_input_mesh(self, filename):
         """Ouput only the input mesh"""
-        self.write_arbitrary_mesh(self.input_mesh, filename, attributes)
+        self.write_arbitrary_mesh(self.input_mesh, filename, self.attributes_to_save)
 
-    def write_tet_mesh(self, filename, attributes=[]):
+    def write_tet_mesh(self, filename):
         """Ouput tetrahedralised mesh"""
-        self.write_arbitrary_mesh(self.tetmesh, filename, attributes)
+        self.write_arbitrary_mesh(self.tetmesh, filename, self.attributes_to_save)
 
-    def write_mesh(self, filename, attributes=[]):
+    def write_mesh(self, filename):
         """Default mesh output"""
-        self.write_tet_mesh(filename, attributes)
+        self.write_tet_mesh(filename)
 
     def write_arbitrary_mesh(self, mesh, filename, attributes=[]):
         """detects mesh type and outputs it"""
@@ -84,6 +89,16 @@ class Mesh3D:
 
         plt.show()
 
+    ### Attribute handling
+
+    def set_attribute(self, name, value):
+        """Sets attribute name to value"""
+        if not self.tetmesh.has_attribute(name):
+            self.tetmesh.add_attribute(name)
+        self.tetmesh.set_attribute(name, value)
+        if name not in self.attributes_to_save:
+            self.attributes_to_save.append(name)
+
     ### Area calculation
 
     def calculate_area(self, triangle):
@@ -103,9 +118,9 @@ class Mesh3D:
 
     ### Getters
 
-    def get_vertices_from_triangle(self, triangle):
-        """Getter for vertices of triangle"""
-        return self.get_pos(triangle[0]), self.get_pos(triangle[1]), self.get_pos(triangle[2])
+    def get_positions_from_tetra(self, tetra):
+        """returns positions of all points making up tetra"""
+        return self.get_pos(tetra[0]), self.get_pos(tetra[1]), self.get_pos(tetra[2]), self.get_pos(tetra[3])
 
     def get_pos(self, vertex):
         """returns position of vertex"""
@@ -113,17 +128,17 @@ class Mesh3D:
 
     ### List getters
 
-    def triangles(self):
+    def elements(self):
         """Getter for triangle list"""
-        return self.triangulation['triangles']
+        return self.tetmesh.voxels
 
     def vertices(self):
         """Getter for vertex list"""
-        return self.triangulation['vertices']
+        return self.tetmesh.vertices
 
-    def edges(self):
-        """Getter for edge list"""
-        return self.get_edges()
+    def faces(self):
+        """Getter for boundary face list"""
+        return self._faces
 
     ### Dirichlet boundary calculation
 
@@ -166,17 +181,21 @@ class Mesh3D:
 
     ### von Neumann assembly
 
-    def calculate_von_neumann_boundary(self, edge, boundary_values):
+    def calculate_von_neumann_boundary(self, face, boundary_values):
         """Returns integral over edge of boundary function"""
-        midpoint_value = (boundary_values[edge[0]] + boundary_values[edge[1]])/2.0
-        return 1.0/2.0 * self.calculate_edge_length(edge) * midpoint_value
+        midpoint_value = (boundary_values[face[0]]
+                          + boundary_values[face[1]]
+                          + boundary_values[face[2]])/3.0
+        return 1.0/3.0 * self.calculate_area_from_points(\
+                                                        self.get_pos(face[0]),
+                                                        self.get_pos(face[1]),
+                                                        self.get_pos(face[2])) * midpoint_value
 
     def assemble_von_neumann_boundary(self, boundary_values):
         """Assembles von neumann vector"""
         boundary_vector = np.zeros(self.n_vertices)
-        edges = self.get_edges()
-        for edge in edges:
-            boundary_vector[edge] += self.calculate_von_neumann_boundary(edge, boundary_values)
+        for face in self.faces():
+            boundary_vector[face] += self.calculate_von_neumann_boundary(face, boundary_values)
         return boundary_vector
 
     ### Body force assembly
@@ -197,10 +216,10 @@ class Mesh3D:
     def assemble_matrix(self, generate_local_matrix_fn):
         """Generic global matrix assembly for both mass and stiffness"""
         matrix = np.zeros((self.n_vertices, self.n_vertices))
-        for triangle in self.triangles():
-            local_matrix = generate_local_matrix_fn(triangle)
-            for local_i, i in enumerate(triangle):
-                for local_j, j in enumerate(triangle):
+        for element in self.elements():
+            local_matrix = generate_local_matrix_fn(element)
+            for local_i, i in enumerate(element):
+                for local_j, j in enumerate(element):
                     matrix[i, j] += local_matrix[local_i, local_j]
 
         return matrix
@@ -214,7 +233,7 @@ class Mesh3D:
 
     def calculate_stiffness(self, tetra):
         """Calculate local stiff matrix for triangle"""
-        p1, p2, p3, p4 = self.get_vertices_from_tetra(tetra)
+        p1, p2, p3, p4 = self.get_positions_from_tetra(tetra)
         BK = np.array([p2-p1, p3-p1, p4-p1])
         BK_inv = np.linalg.inv(BK)
 
@@ -235,3 +254,20 @@ class Mesh3D:
     def assemble_stiffness(self):
         """Assemble global stiffness matrix"""
         return self.assemble_matrix(self.calculate_stiffness)
+
+
+
+def regularise_mesh(mesh, tol):
+    """Takes mesh & resizes triangles to tol size"""
+    mesh, __ = pymesh.remove_degenerated_triangles(mesh, 100)
+    mesh, _info = pymesh.split_long_edges(mesh, tol)
+    mesh, __ = pymesh.collapse_short_edges(mesh, 1e-6)
+    mesh, _info = pymesh.collapse_short_edges(mesh, tol, preserve_feature=True)
+
+def tetrahedralise(mesh, cell_size):
+    """Tetrahedralise input mesh"""
+    return pymesh.tetrahedralize(mesh, cell_size)
+
+def compute_boundary_mesh(mesh):
+    """Returns outer hull of input mesh"""
+    return pymesh.compute_outer_hull(mesh)
