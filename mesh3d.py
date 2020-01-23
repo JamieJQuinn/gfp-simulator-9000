@@ -94,7 +94,7 @@ class Mesh3D:
         """Returns area of triangle from points"""
         v1 = np.array(p2) - np.array(p1)
         v2 = np.array(p3) - np.array(p1)
-        return 0.5*abs(np.cross(v1, v2))
+        return 0.5*np.linalg.norm(np.cross(v1, v2))
 
     ### Getters
 
