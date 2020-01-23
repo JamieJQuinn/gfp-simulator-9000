@@ -30,17 +30,6 @@ class Mesh3D:
 
         self._faces = self.tetmesh.faces[source_faces]
 
-        # Calculate structures on the reference tetrahedron
-        self.gradN = np.array([[-1,-1,-1], [ 1, 0, 0], [ 0, 1, 0], [ 0, 0, 1]])
-        self.gradN_transpose = np.transpose(self.gradN)
-
-        self.K11 = 0.5 * np.outer(self.gradN_transpose[0], self.gradN_transpose[0])
-        self.K22 = 0.5 * np.outer(self.gradN_transpose[1], self.gradN_transpose[1])
-        self.K33 = 0.5 * np.outer(self.gradN_transpose[2], self.gradN_transpose[2])
-        self.K12 = 0.5 * np.outer(self.gradN_transpose[0], self.gradN_transpose[1])
-        self.K13 = 0.5 * np.outer(self.gradN_transpose[0], self.gradN_transpose[2])
-        self.K23 = 0.5 * np.outer(self.gradN_transpose[1], self.gradN_transpose[2])
-
     ### Mesh tools
 
     def write_input_mesh(self, filename):
@@ -210,52 +199,6 @@ class Mesh3D:
                 centre_force += 1/3.0 * force_fn(self.get_pos(index))
             force_vector[triangle] += 1/3.0 * area * centre_force
         return force_vector
-
-    ### Mass and stiffness assembly
-
-    def assemble_matrix(self, generate_local_matrix_fn):
-        """Generic global matrix assembly for both mass and stiffness"""
-        matrix = np.zeros((self.n_vertices, self.n_vertices))
-        for element in self.elements():
-            local_matrix = generate_local_matrix_fn(element)
-            for local_i, i in enumerate(element):
-                for local_j, j in enumerate(element):
-                    matrix[i, j] += local_matrix[local_i, local_j]
-
-        return matrix
-
-    def calculate_mass(self, triangle):
-        """Calculates local mass matrix"""
-        return 1/12.0 * self.calculate_area(triangle) * np.array(
-            [[2, 1, 1],
-             [1, 2, 1],
-             [1, 1, 2]])
-
-    def calculate_stiffness(self, tetra):
-        """Calculate local stiff matrix for triangle"""
-        p1, p2, p3, p4 = self.get_positions_from_tetra(tetra)
-        BK = np.array([p2-p1, p3-p1, p4-p1])
-        BK_inv = np.linalg.inv(BK)
-
-        C_K = BK_inv.dot(np.transpose(BK_inv))
-        detB = np.linalg.det(BK)
-
-        stiffness = detB * (C_K[0,0]*self.K11 + C_K[1,1]*self.K22 + C_K[2,2]*self.K33
-                            + C_K[0,1]*(self.K12 + np.transpose(self.K12))
-                            + C_K[0,2]*(self.K13 + np.transpose(self.K13))
-                            + C_K[1,2]*(self.K23 + np.transpose(self.K23))
-                           )
-        return stiffness
-
-    def assemble_mass(self):
-        """Assemble global mass matrix"""
-        return self.assemble_matrix(self.calculate_mass)
-
-    def assemble_stiffness(self):
-        """Assemble global stiffness matrix"""
-        return self.assemble_matrix(self.calculate_stiffness)
-
-
 
 def regularise_mesh(mesh, tol):
     """Takes mesh & resizes triangles to tol size"""
