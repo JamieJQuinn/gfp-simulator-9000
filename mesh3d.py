@@ -90,20 +90,11 @@ class Mesh3D:
 
     ### Area calculation
 
-    def calculate_area(self, triangle):
-        """Returns area of triangle"""
-        p1, p2, p3 = self.get_vertices_from_triangle(triangle)
-        return self.calculate_area_from_points(p1, p2, p3)
-
     def calculate_area_from_points(self, p1, p2, p3):
         """Returns area of triangle from points"""
-        return 0.5*abs((p2[0]-p1[0])*(p3[1]-p1[1]) - (p2[1]-p1[1])*(p3[0]-p1[0]))
-
-    def integrate(self, fn):
-        sum = 0.0
-        for tri in self.triangles():
-            sum = sum + 1.0/3.0 * self.calculate_area(tri) * np.sum(fn[tri])
-        return sum
+        v1 = np.array(p2) - np.array(p1)
+        v2 = np.array(p3) - np.array(p1)
+        return 0.5*abs(np.cross(v1, v2))
 
     ### Getters
 
@@ -135,39 +126,6 @@ class Mesh3D:
         """Returns vector of boundary_fn acted on all boundary points"""
         return list(map(lambda x: boundary_fn(self.get_pos(x)), self.boundary_vertices))
 
-    ### Edge detection and utilities
-
-    def contains_edge(self, triangle):
-        """Does a triangle contain two edge points?"""
-        edge_markers = self.get_markers(triangle)
-        return len(edge_markers[edge_markers == 1]) == 2
-
-    def get_markers(self, triangle):
-        """Return vertex markers for given triangle"""
-        return np.transpose(self.triangulation['vertex_markers'][triangle])[0]
-
-    def get_edge_from_triangle(self, triangle):
-        """Returns a list of edge points from a triangle"""
-        return triangle[self.get_markers(triangle) == 1]
-
-    def get_edges(self):
-        """Returns a list of edges"""
-        edge_triangles = filter(self.contains_edge, self.triangles())
-        edges = list(map(self.get_edge_from_triangle, edge_triangles))
-        return edges
-
-    def calculate_edge_length(self, edge):
-        """Returns length of edge"""
-        p1, p2 = self.vertices()[edge]
-        return np.sqrt((p1[0] - p2[0])**2 + (p1[1] - p2[1])**2)
-
-    def integrate_around_edge(self, fn):
-        # Note: fn is in full element representation
-        integration_sum = 0.0
-        for edge in self.edges():
-            integration_sum += 0.5 * self.calculate_edge_length(edge) * np.sum(fn[edge])
-        return integration_sum
-
     ### von Neumann assembly
 
     def calculate_von_neumann_boundary(self, face, boundary_values):
@@ -186,19 +144,6 @@ class Mesh3D:
         for face in self.faces():
             boundary_vector[face] += self.calculate_von_neumann_boundary(face, boundary_values)
         return boundary_vector
-
-    ### Body force assembly
-
-    def assemble_body_force(self, force_fn):
-        """Assembles body force vector"""
-        force_vector = np.zeros(self.n_vertices)
-        for triangle in self.triangles():
-            area = self.calculate_area(triangle)
-            centre_force = 0.0
-            for index in triangle:
-                centre_force += 1/3.0 * force_fn(self.get_pos(index))
-            force_vector[triangle] += 1/3.0 * area * centre_force
-        return force_vector
 
 def regularise_mesh(mesh, tol):
     """Takes mesh & resizes triangles to tol size"""
