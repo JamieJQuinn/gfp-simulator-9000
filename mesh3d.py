@@ -145,6 +145,14 @@ class Mesh3D:
             boundary_vector[face] += self.calculate_von_neumann_boundary(face, boundary_values)
         return boundary_vector
 
+    def assemble_stiffness(self):
+        """Assembles stiffness matrix using pymesh"""
+        return np.asarray(self.assembler.assemble("laplacian").todense())
+
+    def assemble_mass(self):
+        """Assembles mass matrix using pymesh"""
+        return np.asarray(self.assembler.assemble("mass").todense())
+
 def regularise_mesh(mesh, tol):
     """Takes mesh & resizes triangles to tol size"""
     mesh, __ = pymesh.remove_degenerated_triangles(mesh, 100)
